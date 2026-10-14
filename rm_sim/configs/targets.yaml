@@ -1,0 +1,78 @@
+# =============================================================================
+#  靶车（被打的目标）
+#
+#  负责人 2026-10-14 拍板：
+#    * 默认靶车 = **步兵全向轮**（沿用现在的模型，几何/贴纸不变）
+#    * 血量按 **600** 作参考量（规则手册里步兵实际是 150~400，取决于底盘类型与等级；
+#      这里 600 是为了与既有基线可比，标注【负责人指定】）
+#    * 哨兵同样按 **600 血** 建模
+#    * **轮腿兵种**要加进基准测试：交战时四块装甲板在 z 轴上随机/定频上下移动，
+#      并且叠加"变速小陀螺"（不是恒定转速）
+# =============================================================================
+
+targets:
+  infantry_omni:                     # ★ 默认靶车
+    desc: "步兵（全向轮）"
+    hp: 600                          # 【负责人指定 2026-10-14】（规则手册：150~400 按底盘/等级）
+    armor: small_armor               # 见 armor.yaml（四块）
+    gyro: variable_speed             # 随机周期的正弦调制（现有 GyroPlan 口径）
+    body_lift: {mode: 'off'}         # 全向轮不能升降（注意引号：YAML 里裸 off 会被当成布尔）
+
+  infantry_wheel_legged:             # ★ 新增：轮腿步兵
+    desc: "步兵（轮腿，可升降）"
+    hp: 600                          # 【负责人指定 2026-10-14】
+    armor: small_armor
+    gyro: variable_speed             # 升降与变速小陀螺**同时发生**（真机就是这样）
+    body_lift:
+      mode: periodic                 # periodic（定频）| random（随机）| off
+      amplitude_mm: 150              # 【负责人指定 2026-10-14】±150 mm
+      period_s: 2.0                  # 【负责人指定 2026-10-14】升降一次约 2 s
+      accel_limit_mps2: 2.0          # 【待校准】亚于正弦本身需要的 1.48（A·ω²=0.15·π²）
+      vel_limit_mps: 0.5             # 【待校准】亚于正弦峰值速度 0.47（A·ω=0.15·π）
+      rand_hold_s: [0.35, 0.8]       # random 模式下换目标高度的间隔
+      # 行程下沿：0 = 停在"贴地姿态"（= 其它靶型用的那个姿态）。**不能给负值**：
+      # 单刚体模型的贴地姿态就是几何最低点落在地面（ride_z ≈ -4mm），负值直接嵌地
+      # —— 负责人 2026-10-14 实测"装甲板嵌地上"就是这个原因。所以实际行程是
+      # 0 ~ +300mm（半幅仍是 150，只是把中位抬到 +150）。
+      bottom_mm: 0
+      # 占空比：不期望装甲板一直在上下动（负责人 2026-10-14）。
+      # 一个活动窗口 = 1~2 个完整升降（2~4 s），之后静止 2.5~5 s（都是随机的）。
+      active_cycles: [1, 2]
+      pause_s: [2.5, 5.0]
+      note: "加速度/速度上限是机械约束；默认取值刚好不扭曲升降正弦（1.48 < 2.0、0.47 < 0.5）"
+      note2: "想更像机械就调小它们（轨迹被压扁、高度变小）"
+
+  sentry:
+    desc: "哨兵"
+    hp: 600                          # 【负责人指定 2026-10-14】
+    armor: small_armor
+    gyro: variable_speed
+    body_lift: {mode: 'off'}
+    note: "规则手册里哨兵两种规格（400血/260热/30冷却 与 200血/100热/10冷却），暂按 600 血"
+
+# ---------------------------------------------------------------------------
+#  基准测试的"靶型预设"（rm_car_script.py 读它）
+#    benchmark_2026_legacy ：现在一直在用的 4 段 —— **默认**，保证既有基线可比
+#    benchmark_2026_wl     ：+ 轮腿两段（升降 + 变速小陀螺）—— 评估"竖直预测"能力
+# ---------------------------------------------------------------------------
+presets:
+  benchmark_2026_legacy:
+    dwell_s: 10
+    shuffle: true
+    modes: [move_spin_rand, move_spin_const, inplace_spin, dash_halt]
+    note: "默认口径：与 sp_vision/RL 现有全部基线可比"
+
+  benchmark_2026_wl:
+    dwell_s: 10
+    shuffle: true
+    modes: [move_spin_rand, move_spin_const, inplace_spin, dash_halt,
+            wheel_legged_periodic, wheel_legged_random]
+    note: "★ 轮腿靶型；换了靶型集合 -> 数字与 legacy 不可直接比，需要重新录基线"
+
+  benchmark_2026_lift:
+    dwell_s: 10
+    shuffle: true
+    modes: [lift_static, lift_linear, lift_spin, lift_random]
+    note: "★ 负责人 2026-10-14 点名的四种带升降靶型：固定升降 / 左右移动升降 / 原地旋转升降 / 随机旋转移动升降"
+
+default_preset: benchmark_2026_legacy

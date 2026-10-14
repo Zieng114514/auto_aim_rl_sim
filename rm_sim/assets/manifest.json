@@ -1,0 +1,92 @@
+{
+  "parts": {
+    "chassis": "chassis.obj",
+    "led_blue": "led_blue.obj",
+    "sticker": "sticker.obj",
+    "gimbal": "gimbal.obj",
+    "armor_0": "armor_0.obj",
+    "armor_1": "armor_1.obj",
+    "armor_2": "armor_2.obj",
+    "armor_3": "armor_3.obj"
+  },
+  "barrel_elev_deg": 25.0,
+  "armor_boxes": {
+    "0": {
+      "center": [
+        0.0004,
+        0.2021,
+        0.1441
+      ],
+      "half": [
+        0.0705,
+        0.0253,
+        0.0649
+      ]
+    },
+    "1": {
+      "center": [
+        0.203,
+        0.0001,
+        0.1301
+      ],
+      "half": [
+        0.0253,
+        0.0705,
+        0.0649
+      ]
+    },
+    "2": {
+      "center": [
+        -0.2023,
+        0.0001,
+        0.1301
+      ],
+      "half": [
+        0.0253,
+        0.0705,
+        0.0649
+      ]
+    },
+    "3": {
+      "center": [
+        0.0004,
+        -0.202,
+        0.1441
+      ],
+      "half": [
+        0.0705,
+        0.0253,
+        0.0649
+      ]
+    }
+  },
+  "muzzle_local": [
+    0.2259,
+    0.0054,
+    0.0
+  ],
+  "pitch_pivot": [
+    0.0,
+    0.0,
+    0.1765
+  ],
+  "yaw_pivot": [
+    -0.0684,
+    0.016,
+    0.2273
+  ],
+  "params": {
+    "projectile_speed": 25.0,
+    "projectile_diameter": 0.017,
+    "projectile_mass": 0.0032,
+    "projectile_friction": 1.1,
+    "gimbal_pitch_limit": 0.785,
+    "gimbal_rotation_speed": 3.0,
+    "chassis_max_speed": 6.0,
+    "chassis_rotation_speed": 7.42,
+    "mecanum_wheel_radius": 0.076,
+    "mecanum_half_wheelbase": 0.18,
+    "mecanum_half_trackwidth": 0.15
+  },
+  "up_axis_fixed": true
+}

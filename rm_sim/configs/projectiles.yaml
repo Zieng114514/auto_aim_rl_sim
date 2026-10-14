@@ -1,0 +1,54 @@
+# =============================================================================
+#  弹丸参数（17mm / 42mm）
+#
+#  出处：RoboMaster 2026 规则手册 V2.2.0 §4.6.2 表 4-1（PDF p66，印刷页 65）
+#        + §5.1.1 表 5-1/5-2（PDF p68-69）
+#
+#  **公差本身就是散布来源**（负责人 2026-10-14 指出）：17mm 直径 16.8±0.2mm、
+#  质量 3.2±0.1g。同一把枪同一转速下，质量 ±3% 会让初速反比变化 ≈ ±3%
+#  （5 m 处 ±15 cm 量级），比枪口角散布还大 —— 这条链路见 projectile_spread.yaml。
+# =============================================================================
+p17:
+  name: "17mm 荧光弹丸"
+  appearance: "球形，黄绿色"
+  diameter_mm: {nominal: 16.8, tol: 0.2}        # 表 4-1
+  mass_g:      {nominal: 3.2,  tol: 0.1}
+  hardness_shore: "90±5A"
+  material: TPU
+  count_per_match: {min: 4000}                  # "有限，但不少于 4000 发/局"
+  v0_limit_mps: 25                              # 射击初速度上限（超限惩罚见 rules）
+  damage:                                       # 表 5-2
+    robot_armor: 20
+    base_armor_front_top: 5
+    base_armor_other: 20
+    outpost_mid_armor: 20
+    collision: 2
+  heat_per_shot: 10                             # §5.1.3
+  detect:                                       # 表 5-1
+    min_interval_ms: 50
+    min_speed_mps: 12                           # 按接触面法向分量
+  sim:
+    # 仿真里用哪个碰撞体：见 armor.yaml（小装甲模块 140×125）
+    note: "仿真默认只建模 17mm；42mm 见 rules/rmuc_2026.yaml 的 hero 条目"
+
+p42:
+  name: "42mm 发光弹丸"
+  appearance: "与高尔夫球外形相似，半透明"
+  diameter_mm: {nominal: 42.5, tol: 0.5}
+  mass_g:      {nominal: 44.5, tol: 0.5}
+  hardness_shore: "90±5A"
+  material: TPE
+  count_per_match: {nominal: 100}
+  v0_limit_mps: 12                              # 远程优先 + 部署模式 -> 16.5（§3.3 / §5.5.2）
+  v0_limit_mps_deployed: 16.5
+  damage:
+    robot_armor: 200
+    base_armor: 200
+    outpost_mid_armor: 200
+  heat_per_shot: 100
+  detect:
+    min_interval_ms: 200
+    min_speed_mps: 10
+  sim:
+    enabled: false                              # ★ 暂不建模（负责人 2026-10-14：先把步兵打好）
+    doc_only: true

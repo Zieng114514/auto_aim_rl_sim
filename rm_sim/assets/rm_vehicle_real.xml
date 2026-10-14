@@ -1,0 +1,83 @@
+<mujoco model="rm_vehicle_real">
+  <!-- 由 vehicle.glb 自动转换生成；参数取自 bevy_robomaster_simulator/config.toml -->
+  <compiler angle="radian" autolimits="true"/>
+  <option timestep="0.001" integrator="Euler" ccd_iterations="50" iterations="20" ls_iterations="10"/>
+  <size njmax="3000" nconmax="500"/>
+  <visual>
+    <headlight diffuse="0.65 0.65 0.65" ambient="0.32 0.32 0.32"/>
+    <global azimuth="130" elevation="-18" offwidth="1600" offheight="1000"/>
+  </visual>
+  <asset>
+    <mesh name="armor_0" file="./obj/armor_0.obj"/>
+    <mesh name="armor_1" file="./obj/armor_1.obj"/>
+    <mesh name="armor_2" file="./obj/armor_2.obj"/>
+    <mesh name="armor_3" file="./obj/armor_3.obj"/>
+    <mesh name="chassis" file="./obj/chassis.obj"/>
+    <mesh name="gimbal" file="./obj/gimbal.obj"/>
+    <mesh name="led_blue" file="./obj/led_blue.obj"/>
+    <mesh name="sticker" file="./obj/sticker.obj"/>
+    <material name="mat_body"    rgba="1.0 1.0 1.0 1" specular="0.25" shininess="0.25"/>
+    <material name="mat_gimbal"  rgba="1.0 1.0 1.0 1" specular="0.3" shininess="0.3"/>
+    <!-- 自发光灯条：MuJoCo 的 emission 是标量强度，颜色由 rgba 决定 -->
+    <material name="led_red"  rgba="1.0 0.07 0.0 1" emission="1"/>
+    <material name="led_blue" rgba="0.0 0.14 1.0 1" emission="1"/>
+    <material name="mat_sticker" rgba="0.8 0.8 0.8 1" specular="0.15" shininess="0.15"/>
+    <material name="mat_armor" rgba="0.0078 0.0078 0.0078 1" specular="0.2" shininess="0.2"/>
+  </asset>
+
+  <worldbody>
+    <light pos="0 0 3" dir="0 0 -1" directional="true"/>
+
+    <!-- ===== 底盘：自由关节 + 4 块装甲板（视觉网格 + 图元碰撞）===== -->
+    <body name="chassis" pos="0 0 0.12">
+      <freejoint name="chassis_free"/>
+      <geom name="chassis_vis" type="mesh" mesh="chassis" material="mat_body" group="0" contype="0" conaffinity="0" mass="0"/>
+      <geom name="led_blue_vis" type="mesh" mesh="led_blue" material="led_blue" group="2" contype="0" conaffinity="0" mass="0"/>
+      <geom name="sticker_vis" type="mesh" mesh="sticker" material="mat_sticker" group="2" contype="0" conaffinity="0" mass="0"/>
+      <geom name="chassis" type="box" group="3" size="0.247 0.2592 0.1155"
+            pos="0.0 0.0 0.1155" mass="7"
+            condim="3" friction="0.8 0.005 0.0001" rgba="0 0 0 0"/>
+      <geom name="armor0_vis" type="mesh" mesh="armor_0" material="mat_armor" group="2" contype="0" conaffinity="0" mass="0"/>
+      <geom name="armor0" type="box" group="3" size="0.0705 0.0253 0.0649" pos="0.0004 0.2021 0.1441"
+            mass="0.3" condim="3" friction="0.6 0.005 0.0001" rgba="0 0 0 0"/>
+      <geom name="armor1_vis" type="mesh" mesh="armor_1" material="mat_armor" group="2" contype="0" conaffinity="0" mass="0"/>
+      <geom name="armor1" type="box" group="3" size="0.0253 0.0705 0.0649" pos="0.203 0.0001 0.1301"
+            mass="0.3" condim="3" friction="0.6 0.005 0.0001" rgba="0 0 0 0"/>
+      <geom name="armor2_vis" type="mesh" mesh="armor_2" material="mat_armor" group="2" contype="0" conaffinity="0" mass="0"/>
+      <geom name="armor2" type="box" group="3" size="0.0253 0.0705 0.0649" pos="-0.2023 0.0001 0.1301"
+            mass="0.3" condim="3" friction="0.6 0.005 0.0001" rgba="0 0 0 0"/>
+      <geom name="armor3_vis" type="mesh" mesh="armor_3" material="mat_armor" group="2" contype="0" conaffinity="0" mass="0"/>
+      <geom name="armor3" type="box" group="3" size="0.0705 0.0253 0.0649" pos="0.0004 -0.202 0.1441"
+            mass="0.3" condim="3" friction="0.6 0.005 0.0001" rgba="0 0 0 0"/>
+
+    </body>
+
+    <!-- ===== 云台：yaw(绕 z) → pitch(绕 y) → 炮管 +X + muzzle site ===== -->
+    <!-- 炮管：源模型 SHOT_DIRECTION 的局部 +Y 就是射向（bevy 源码 projectile.rs
+         用 (gimbal.rot * launch_offset.rot) * Vec3::Y，launch_offset 即该节点）。
+         转换时已把整车绕 z 转到"炮管水平投影 = +X"，并用 site 的 quat 保留
+         模型自带的 +25° 安装仰角。沿 +X 的炮管只能绕 y 俯仰；正角低头、负角抬。 -->
+    <body name="gimbal_yaw" pos="-0.0684 0.0160 0.2273">
+      <inertial pos="0 0 0" mass="0.6" diaginertia="0.002 0.002 0.002"/>
+      <joint name="g_yaw" type="hinge" axis="0 0 1" damping="0.15" armature="0.02"/>
+      <body name="gimbal_pitch" pos="0.0000 0.0000 0.1765">
+        <inertial pos="0 0 0" mass="1.2" diaginertia="0.006 0.006 0.006"/>
+        <joint name="g_pitch" type="hinge" axis="0 1 0" damping="0.15" armature="0.01"
+               range="-0.3487 0.7863" limited="true"/>
+        <geom name="gimbal_vis" type="mesh" mesh="gimbal" material="mat_gimbal" group="1" contype="0" conaffinity="0" mass="0"/>
+        <!-- 出膛点：site 的局部 +x 就是炮管实际指向。
+             源模型炮管自带 +25.0° 安装仰角，这里用 quat 让 site 跟着倾斜，
+             否则弹丸会沿水平飞出、和看到的炮管对不上。 -->
+        <site name="muzzle" pos="0.2259 0.0054 0.0000"
+              quat="0.976296 0.000000 -0.216440 0.000000"
+              size="0.01" rgba="1 0.5 0 1"/>
+      </body>
+    </body>
+  </worldbody>
+
+  <actuator>
+    <position name="yaw_servo"   joint="g_yaw"   kp="50" kv="6" ctrlrange="-3.1416 3.1416"/>
+    <position name="pitch_servo" joint="g_pitch" kp="50" kv="6"
+              ctrlrange="-0.3487 0.7863"/>
+  </actuator>
+</mujoco>

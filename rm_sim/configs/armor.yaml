@@ -1,0 +1,42 @@
+# =============================================================================
+#  装甲模块
+#
+#  出处：负责人 2026-10-14 提供（RoboMaster 标准装甲模块两种尺寸）
+#        + 规则手册 §5.1.1（最小检测间隔/有效速度）、§5.5.1（暴击区）
+#
+#  ⚠️ 容易搞混的两个"装甲尺寸"：
+#    * **受击面**（命中判定用）：小装甲模块 140×125mm、大装甲模块 235×127mm
+#    * **灯条几何**（视觉解算用）：两块灯条间距 135mm、灯条长 56mm
+#      这组数在 sp_vision 里是 SV_ARMOR_W/SV_ARMOR_H，只用于 PnP 与真值四点，
+#      **不是命中面积**（我曾把它当成板子高度，导致对竖直偏差的影响判断偏大，已更正）。
+# =============================================================================
+small_armor:
+  module_mm: {w: 140, h: 125}       # 标准小装甲模块（受击面）
+  modeled: true
+  sim_hitbox:                        # 仿真里实际的碰撞盒（assets/rm_vehicle_real.xml）
+    geom: "box size=\"0.0705 0.0253 0.0649\""
+    face_mm: {w: 141, h: 130}        # ≈ 140×125，已是真实尺寸
+    note: "命中判定用这个 box；四块板分别装在车的 前/右/左/后"
+
+light_bar_geometry:                  # 仅视觉（检测 + PnP + 真值四点）
+  spacing_mm: 135                    # 两块灯条中心间距
+  length_mm: 56
+  used_by: "sp_vision_25（SV_ARMOR_W/SV_ARMOR_H）、rm_link 的真值四点生成"
+
+large_armor:
+  module_mm: {w: 235, h: 127}
+  modeled: false                     # ★ 暂不建模（负责人 2026-10-14：实战对位是步兵小装甲板）
+  doc_only: true
+  todo: "做英雄/基地对位时再加：需要 MJCF 里多一种装甲 box 尺寸 + 检测/跟踪支持两种板"
+
+other_modules:                       # 记录备用，均未建模
+  base_armor: {face_mm: null, note: "基地装甲模块；17mm 上方前装甲伤害 5、其余 20"}
+  outpost_mid_armor: {face_mm: null, note: "前哨站中部装甲模块"}
+  dart_module: {note: "飞镖检测模块，固定/随机固定/随机移动/末端移动四种"}
+
+crit_zone:
+  # §5.5.1（PDF p97）：装甲模块中心 10mm×10mm 矩形区域，命中获得 150% 攻击增益
+  size_mm: 10
+  damage_multiplier: 1.5
+  modeled: false
+  applies_to: [base_armor, outpost_armor, robot_armor]     # 规则原文含机器人与基地/前哨站
