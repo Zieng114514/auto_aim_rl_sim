@@ -59,9 +59,10 @@ for t in rm_sim/test_*.py; do ~/mjlab-env/venv/bin/python $t; done
 ## 文档怎么读
 
 1. [`agnet.md`](agnet.md) —— 现状快照、三阶段路线图、已拍板决策、开发规范。**先看这个。**
-2. [`agnet_experience.md`](agnet_experience.md) —— 参考数据、指标口径、仿真与现实的差距清单、踩坑经验。
-3. [`agnet_logs/`](agnet_logs/) —— 每次开发会话的日志（做了什么/为什么/数据/坑/下一步）。
-4. [`DEPLOY.md`](DEPLOY.md) —— 环境搭建（OpenVINO / ONNX Runtime / MuJoCo）。
+2. [`agnet_handover.md`](agnet_handover.md) —— **交接说明**：最近一轮对话的结论、事故记录、未决问题（给接手的人/AI）。
+3. [`agnet_experience.md`](agnet_experience.md) —— 参考数据、指标口径、仿真与现实的差距清单、踩坑经验。
+4. [`agnet_logs/`](agnet_logs/) —— 每次开发会话的日志（做了什么/为什么/数据/坑/下一步）。
+5. [`DEPLOY.md`](DEPLOY.md) —— 环境搭建（OpenVINO / ONNX Runtime / MuJoCo）。
 
 ## 许可与致谢
 
