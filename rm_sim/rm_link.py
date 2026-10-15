@@ -205,6 +205,12 @@ def ballistics_params_from_config(cfg, args) -> BallisticsParams | None:
     p.enabled = True
   elif mode == "off":
     p.enabled = False
+  # 自旋（马格努斯）单独一个开关，便于 A/B（默认跟 YAML；YAML 里也是 false）
+  smode = getattr(args, "ballistics_spin", "config")
+  if smode == "on":
+    p.spin.enabled = True
+  elif smode == "off":
+    p.spin.enabled = False
   return p
 
 
@@ -504,6 +510,15 @@ class LinkSim:
       q = quat_mul(np.asarray(q, dtype=float),
                    axis_angle_to_quat(self.disturb.imu_quat_noise())).tolist()
     mp, md = self.demo.muzzle()
+    # 自旋轴（**世界系**）：马格努斯力的方向由它决定 —— 让 C++ 解算器拿到与仿真**同一个轴**。
+    # 炮口 site 的局部轴：x=炮管朝向、y=侧向、z=炮管的"上"（无 roll 时 = 世界 up 垂直于炮管的分量）
+    _sp = self.ballistics.spin if self.ballistics is not None else None
+    _spin_on = bool(_sp is not None and _sp.enabled and _sp.omega_rad_s != 0.0)
+    if _spin_on:
+      _Rms = self.data.site_xmat[self.demo.muzzle_sid].reshape(3, 3)
+      _axis = (_Rms[:, 1] if _sp.axis == "barrel_side" else _Rms[:, 2]).tolist()
+    else:
+      _axis = [0.0, 0.0, 1.0]
     with self.lock:
       self.jpeg = jpeg
       self.jpeg_ov = jpeg_ov
@@ -528,6 +543,19 @@ class LinkSim:
         # 与"仿真里飞的弹道"是同一个物理；关闭气动（默认）时为 0 ⇒ C++ 走闭式解。
         "ball_k": (float(self.ballistics.k)
                    if (self.ballistics is not None and self.ballistics.enabled) else 0.0),
+        # 自旋（马格努斯）：C++ 解算器用这些值算"落点偏置"并做 hold-off 修正。
+        # 与 ball_k 一样，**只从仿真来**（同一个 ballistics.yaml），不给两处漂移的机会。
+        "ball_spin": {
+          "enabled": _spin_on,
+          "omega": float(_sp.omega_rad_s) if _sp is not None else 0.0,
+          "axis": [float(x) for x in _axis],
+          "cl_slope": float(_sp.cl_slope) if _sp is not None else 0.0,
+          "cl_max": float(_sp.cl_max) if _sp is not None else 0.0,
+          "rho": float(self.ballistics.rho) if self.ballistics is not None else 0.0,
+          "diameter_mm": (float(self.ballistics.diameter_mm)
+                          if self.ballistics is not None else 0.0),
+          "mass_g": (float(self.ballistics.mass_g) if self.ballistics is not None else 0.0),
+        },
         # 枪的真实状态：实际弹速 / 热量 / 锁枪 / 超限扣血 ——
         # 既是诊断信息，也是将来 RL 的观测来源
         "gun": None if self.demo.gun is None else self.demo.gun.status(),
@@ -978,6 +1006,10 @@ def build_parser() -> argparse.ArgumentParser:
   #   --ballistics-drag off = 强制关（即使 YAML 里开了）
   ap.add_argument("--ballistics-drag", choices=("config", "on", "off"), default="config",
                   help="覆盖 ballistics.yaml 的 drag.enabled：config=按 YAML（默认）/ on / off")
+  # 自旋（马格努斯）同样默认跟 YAML（spin.enabled=false）。打开它前必须先有解算器的 hold-off
+  # 修正（C++ aimer / 镜像 AimerParams），否则 8 m 处会偏十几厘米（见 agnet_logs 2026-10-15 §7）。
+  ap.add_argument("--ballistics-spin", choices=("config", "on", "off"), default="config",
+                  help="覆盖 ballistics.yaml 的 spin.enabled：config=按 YAML（默认）/ on / off")
   ap.add_argument("--gun-speed-model", dest="gun_speed", action="store_true", default=True)
   ap.add_argument("--no-gun-speed", dest="gun_speed", action="store_false")
   ap.add_argument("--gun-heat-model", dest="gun_heat", action="store_true", default=True)
