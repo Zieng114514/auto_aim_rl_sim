@@ -73,6 +73,39 @@ ssh jetson 'cd ~/vision/rm_sim && MUJOCO_GL=egl ~/mjlab-env/venv/bin/python rm_l
 
 > `--host 0.0.0.0` 是 2026-10-15 新加的（`rm_sim/rm_link.py`）；默认仍是 `127.0.0.1`，不改变既有行为。
 
+## 4.1 可视化：三块画面分别在哪儿、用哪个 IP（2026-10-15 踩过）
+
+双机之后"看画面"不再靠窗口 —— **x86 小主机是无头的**（没有 Xorg、`DISPLAY` 为空，
+`cv::imshow` 弹不出来；原来有桌面的机器已退役），全部走网络：
+
+| 看什么 | 地址（从 Mac / 浏览器） | 谁提供 |
+|---|---|---|
+| **全局视角**（靶车运动 + 命中情况） | `http://192.168.1.101:8099/` | Jetson 的 `rm_link.py`（页面第一块） |
+| **云台相机原图**（sp_vision 的输入，无框） | 同上（页面第二块，`/stream.mjpg`） | 同上 |
+| **YOLO 检测框 + 预测瞄点** | `http://192.168.1.236:8100/` | x86 的 `sim_main --show_http=8100` |
+
+> **IP 要用对**：从 Mac / 浏览器看，要用**同一网段的 Wi-Fi 地址** ——
+> Jetson `192.168.1.101`、x86 `192.168.1.236`。
+> `10.10.10.x` 是 **x86 ↔ Jetson 的网线直连**（x86 `10.10.10.1`、Jetson `10.10.10.2`），
+> 只给 `/grab`、`/command` 走（亚毫秒）。实测从 Mac 访问 `10.10.10.2:8099` 会**连接超时**
+> （`ping` 能通是路由器代答，别被骗）—— "网页只剩全局、云台画面看不见"的排查就栽在这里。
+> x86 还各有一个 `192.168.50.1`（它自己的热点）和 docker 网桥，都不是给你看的。
+
+第三块画面（YOLO 效果图）的启动方式：
+
+```bash
+# 跨机闭环（仿真在 Jetson、视觉在 x86），并开 debug 画面出口
+ssh x86 'cd ~/vision/sp_vision_25 && SIM_BASE_URL=http://10.10.10.2:8099 \
+  ./build/sim/sim_main --show_http=8100 configs/sim.yaml'
+# 跑基准脚本时用环境变量透传：
+ssh x86 'cd ~/vision && SHOW_HTTP=8100 SIM_REMOTE=jetson SIM_BASE_URL=http://10.10.10.2:8099 \
+  bash sp_vision_25/sim/bench_ttk.sh 300 20251012'
+# tools/run_debug.sh 会**自动检测**有没有 DISPLAY：没有就切到 MJPEG（端口 SHOW_HTTP_PORT，默认 8100）
+```
+
+`--show_http` 推的图与 `--show` 那个窗口**是同一份绘制代码产出的同一张图**，
+所以内容完全一致；`--show` 只在有 DISPLAY 的机器上有意义。
+
 ## 5. 本目录脚本
 
 | 脚本 | 用途 |

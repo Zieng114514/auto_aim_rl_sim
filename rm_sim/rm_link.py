@@ -827,9 +827,17 @@ def make_handler(sim: LinkSim):
         except (BrokenPipeError, ConnectionResetError):
           pass
       elif path in ("/", "/index.html"):
-        # 页面上**只放全局固定视角**。云台那一路（/stream.mjpg）接口保留，
-        # 因为 sp_vision 要靠它取图，只是不再往页面上摆。
-        cam_block = ""
+        # 页面上先放全局固定视角，再放云台相机原图（= sp_vision 的输入画面）。
+        #
+        # 2026-10-15 双机部署后：sp_vision 跑在**无头** x86 小主机上，它的
+        # cv::imshow 窗口弹不出来，所以"云台看出去是什么"必须能在网页上看到；
+        # 带检测框/预测瞄点的那张图由 sim_main --show_http 另外提供一个 MJPEG 出口
+        # （见 tools/README.md 的"看 YOLO 画面"一节）。
+        cam_block = (
+          "<div><div style='color:#6cf;font-size:13px;margin-bottom:4px'>"
+          "云台相机原图（sp_vision 的输入，无检测框）</div>"
+          "<img src='/stream.mjpg' style='width:100%;max-width:" + str(sim.args.width) +
+          "px;image-rendering:auto'></div>")
         ov_w = sim.args.overview_width
         self._send(
           ("<html><head><title>rm_sim</title></head>"

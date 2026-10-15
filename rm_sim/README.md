@@ -147,15 +147,23 @@ vehicle.glb
 
 ---
 
-## 7. 给 YOLO / 检测器的接口
+## 7. 网页上的三块画面 / 给检测器的接口
 
-`rm_stream.py` 提供三个 HTTP 端点：
+浏览器打开 `http://<仿真机 IP>:8099` 能看到**两块**画面：上面是**全局固定视角**
+（靶车运动 + 命中情况），下面是**云台相机原图**（= sp_vision 的输入，无检测框）。
+**带检测框和预测瞄点的那块**由 sp_vision 自己的 `sim_main --show_http` 提供
+（x86 无头机器上替代原来的 OpenCV 窗口），见 `tools/dual_machine/README.md` §4.1。
+
+`rm_stream.py` / `rm_link.py` 提供的 HTTP 端点：
 
 | 端点 | 内容 |
 |---|---|
-| `/stream.mjpg` | MJPEG 流（`cv2.VideoCapture` 可直接读） |
-| `/frame.jpg` | 最新单帧 |
-| `/state.json` | 当前状态 + **装甲板标注真值** |
+| `/stream.mjpg` | **云台相机** MJPEG 流（`cv2.VideoCapture` 可直接读） |
+| `/overview.mjpg` | **全局固定视角** MJPEG 流（只在有人看时才渲染，省帧率） |
+| `/frame.jpg` / `/overview.jpg` | 最新单帧 |
+| `/state.json` | 当前状态 + **装甲板标注真值** + 逐发弹道记录（`shot_log`） |
+| `/grab` | sp_vision 用的那一口（图像 + 同帧四元数 + `ball_k` / `ball_spin`） |
+| POST `/command` | sp_vision 下发的云台指令 / 开火 |
 
 ```python
 import cv2, requests

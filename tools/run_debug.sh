@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =============================================================================
-#  一键联调：rm_sim + 浏览器 + PlotJuggler + sp_vision debug 窗口
+#  一键联调：rm_sim + 浏览器 + PlotJuggler + sp_vision debug 画面
 #
 #  用法：
 #      bash tools/run_debug.sh                # 全套
@@ -9,7 +9,13 @@
 #      bash tools/run_debug.sh --no-browser   # 不开浏览器
 #      bash tools/run_debug.sh --seconds 30   # 跑 30 秒自动退出
 #
-#  退出：在 sp_vision debug 窗口按 q。
+#  退出：在 sp_vision debug 窗口按 q；**无 DISPLAY 的机器上用 Ctrl-C**
+#        （那种情况下画面走 MJPEG，见下面 SHOW_HTTP_PORT 的说明）。
+#
+#  无头机器（当前部署的 x86 小主机就是）：没有 Xorg/DISPLAY，cv::imshow 根本弹不出窗口，
+#  所以脚本会自动把 sp_vision 的 debug 画面改成 MJPEG 出口 ——
+#  浏览器打开 http://<本机IP>:<SHOW_HTTP_PORT>（默认 8100）即可，图像与窗口里那张**完全一样**。
+#  想改端口： SHOW_HTTP_PORT=8110 bash tools/run_debug.sh
 #
 #  设计要点（上一版的问题是"某一步静默失败，用户不知道哪步没起来"）：
 #    * 每一步都**校验**并明确打印 ✓/✗，日志留在 /tmp 下
@@ -21,6 +27,8 @@ set -uo pipefail
 WS="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 VENV_PY="$HOME/mjlab-env/venv/bin/python"
 PORT=8099
+# sp_vision 的 debug 画面（MJPEG）端口：无 DISPLAY 的机器上用它替代 OpenCV 窗口
+SHOW_HTTP_PORT="${SHOW_HTTP_PORT:-8100}"
 SECONDS_RUN=0
 USE_GT=0
 OPEN_BROWSER=1
@@ -221,8 +229,18 @@ sed "s/^  detect_source:.*/  detect_source: \"$DETECT_SRC\"/" \
     "$WS/sp_vision_25/configs/sim.yaml" > "$CFG"
 
 say "[4/4] 启动 sp_vision（识别来源 = $DETECT_SRC）"
-echo "    debug 窗口：绿框 = 检测到的装甲板　黄框 = 预测框（瞄准点反投影）"
-echo "    退出：在 debug 窗口按 q"
+# 无头机器没有 DISPLAY：cv::imshow 起来就报错，所以自动改走 MJPEG 出口。
+# 两条路径是**同一份绘制代码**，所以图像内容不会有差异。
+SHOW_ARGS=(--show)
+if [[ -z "${DISPLAY:-}" ]]; then
+  SHOW_ARGS=("--show_http=$SHOW_HTTP_PORT")
+  echo "    本机没有 DISPLAY ⇒ 不开 OpenCV 窗口，debug 画面走 MJPEG："
+  echo "      http://<本机IP>:$SHOW_HTTP_PORT   ← 浏览器打开（绿框=检测，黄框=预测瞄点）"
+  echo "    退出：Ctrl-C"
+else
+  echo "    debug 窗口：绿框 = 检测到的装甲板　黄框 = 预测框（瞄准点反投影）"
+  echo "    退出：在 debug 窗口按 q"
+fi
 echo
 
 # sim_ort 后端如果用 device: CUDA，ONNX Runtime 需要能找到 cublas/cudnn 这些
@@ -235,8 +253,8 @@ fi
 
 cd "$WS/sp_vision_25"
 if [[ "$SECONDS_RUN" -gt 0 ]]; then
-  timeout -s INT "$SECONDS_RUN" $SV_PIN ./build/sim/sim_main --show "$CFG"
+  timeout -s INT "$SECONDS_RUN" $SV_PIN ./build/sim/sim_main "${SHOW_ARGS[@]}" "$CFG"
 else
-  $SV_PIN ./build/sim/sim_main --show "$CFG"
+  $SV_PIN ./build/sim/sim_main "${SHOW_ARGS[@]}" "$CFG"
 fi
 exit 0

@@ -19,7 +19,7 @@ bash tools/run_debug.sh
 | 1 | 起 **rm_sim**（`rm_sim/rm_link.py`，MuJoCo 物理 + 渲染 + `/grab`、`/command` 接口） |
 | 2 | 打开**浏览器**到 `http://127.0.0.1:8099` —— 仿真相机原图（MJPEG） |
 | 3 | 起 **PlotJuggler** —— UDP 9870 收云台跟踪曲线 |
-| 4 | 起 **sp_vision**（`sim_main --show`）—— 弹出 OpenCV 的 `detection` 窗口，显示 YOLO 识别效果 |
+| 4 | 起 **sp_vision**（`sim_main`）—— **无头机器上**开 `--show_http=8100`，浏览器看 YOLO 识别效果；有 DISPLAY 时才用 `--show` 弹 OpenCV 窗口 |
 
 **退出**：在 `detection` 窗口按 `q`（会顺带把 rm_sim / PlotJuggler 一起收干净）。
 
@@ -33,11 +33,18 @@ bash tools/run_debug.sh --seconds 30   # 跑 30 秒自动退出（默认一直�
 bash tools/run_debug.sh --port 8100    # 换端口
 ```
 
-### 三个窗口分别看什么
+### 三块画面分别看什么
 
-* **浏览器**：仿真相机看到的原始画面。判断"目标在不在视野里、灯条亮不亮"看这个。
-* **detection（OpenCV）**：sp_vision 原生的识别调试视图（`YOLOV8::draw_detections`），
-  绿框是四点、绿字是 `置信度 类别 大小`。判断"识别漏没漏、框准不准"看这个。
+> **双机部署下看画面的地址、IP 怎么选**见 [`dual_machine/README.md`](dual_machine/README.md) §4.1
+> （全局视角 / 云台原图在 Jetson 的 :8099 页面；YOLO 识别效果在 x86 的 :8100）。
+
+* **浏览器（rm_sim 页面）**：上面一块是**全局固定视角**（靶车运动 + 命中情况），
+  下面一块是**云台相机原图** —— 也就是 sp_vision 的输入。判断"目标在不在视野里、灯条亮不亮"看这个。
+* **YOLO 识别效果（`sim_main --show_http=8100`）**：sp_vision 的调试视图。
+  绿框是四点、绿字是 `置信度 类别 大小`，黄框是**预测瞄点**反投影回图像的框（开火时刻该打的那块）。
+  判断"识别漏没漏、框准不准、瞄点对不对"看这个。
+  它同时支持 MJPEG（`/debug.mjpg`）与单帧（`/debug.jpg`），后者方便 `curl` 抓图留证。
+  **有 DISPLAY 的机器**上也可以继续用 `--show` 弹窗口 —— 画的是同一张图。
 * **PlotJuggler**：云台跟踪曲线。判断"跟得上跟不上"看这个。
 
 ---
