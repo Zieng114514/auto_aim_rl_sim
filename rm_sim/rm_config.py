@@ -110,16 +110,19 @@ class Config:
     self.rules = self._yaml(os.path.join("rules", self.ruleset_name + ".yaml"))
     self.projectiles = self._yaml("projectiles.yaml")
     self.spread = self._yaml("projectile_spread.yaml")
+    self.ballistics = self._yaml("ballistics.yaml")   # 弹道气动（drag 默认关）
     self.armor = self._yaml("armor.yaml")
     self.targets_cfg = self._yaml("targets.yaml")
     self._raw = {
       "rules": self.rules, "projectiles": self.projectiles, "spread": self.spread,
-      "armor": self.armor, "targets": self.targets_cfg,
+      "ballistics": self.ballistics, "armor": self.armor, "targets": self.targets_cfg,
     }
 
   def _validate(self) -> None:
     """只做"能不能跑"级别的校验：缺字段、明显非法的取值。
     数值合理性（比如热量上限该多大）不做判断 —— 那是负责人的事。"""
+    # 弹道气动：只校验结构。enabled=false 时其余字段不参与物理（保证既有基线逐位不变）
+    _need(_need(self.ballistics, "drag", "ballistics.yaml"), "enabled", "ballistics.yaml:drag")
     if self.ruleset_name == "legacy_sim":
       g = _need(self.rules, "gun", "rules/legacy_sim.yaml")
       for k in ("speed_cold", "speed_warm", "heat_max", "heat_per_shot",

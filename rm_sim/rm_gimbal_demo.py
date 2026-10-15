@@ -564,11 +564,15 @@ class Demo:
   """单世界：云台瞄准并发射 17mm 弹丸击打随机移动的靶车。"""
 
   def __init__(self, dt: float = DEFAULT_DT, realistic_armor: bool = True,
-               real_assets: str | None = None, xml_hook=None, gun_params=None) -> None:
+               real_assets: str | None = None, xml_hook=None, gun_params=None,
+               ballistics_params=None) -> None:
     """xml_hook: 可选的 str->str 钩子，在加载前改 MJCF（例如给云台挂取流相机）。
 
     gun_params: rm_gun.GunParams；给 None 表示保持旧行为（理想枪：恒速、无热量、无散布）。
+    ballistics_params: rm_ballistics.BallisticsParams；给 None 或 enabled=False
+      表示弹道只有重力（历史行为，逐位不变）。
     """
+    self.ballistics = ballistics_params
     # 枪：摩擦轮弹速 + 枪口热量 + 弹丸散布（三个模型各自可开关）
     self.gun = GunModel(gun_params) if gun_params is not None else None
     self.last_shot_speed = float(self.gun.nominal_speed) if self.gun else float(BALL_SPEED)
@@ -1049,6 +1053,14 @@ class Demo:
       self.fire()
     if c.auto and (self._sim_time - self._last_fire) > 1.0 / max(c.auto_hz, 0.1):
       self.fire()
+
+    # 3b) 气动阻力（默认关；`configs/ballistics.yaml` 的 drag.enabled）
+    #     只改**飞行中**弹丸的 qvel，仍交给 MuJoCo 的 Euler 积分推进。
+    #     放在 mj_step 之前 = "这一步的加速度里含阻力"，与 rm_ballistics.fly(scheme="euler")
+    #     同序（自检 test_ballistics.py 就是按这个前提对齐的）。
+    if self.ballistics is not None:
+      self.ballistics.apply_to_balls(
+        data, self.ball_qadr, self.ball_dadr, self.ball_t, model.opt.timestep)
 
     # 4) 物理推进
     mujoco.mj_step(model, data)

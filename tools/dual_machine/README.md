@@ -10,10 +10,16 @@
 | `x86` | 192.168.1.236 | `clgx` | Intel Core Ultra 9 285H（16 线程）/ 30 GiB / 916 G NVMe / **无可用 GPU** | Ubuntu 22.04.5，内核 6.8.0-40 | **视觉闭环（sp_vision，已编译）+ 训练** |
 | `jetson` | 192.168.1.101 | `nvidia` | Jetson Orin NX（8 核 A78AE）/ 15 GiB / 233 G NVMe / **Orin GPU + CUDA 12.6** | L4T R36.4.3（JetPack 6.2），aarch64 | **仿真机（rm_sim，EGL 20~24 FPS）**（也能训练，4 环境 ~89 步/s） |
 
-> 两者之间走**局域网**传 `/grab`（图像+姿态）与 `/command`。**强烈建议网线直连**：
-> Wi-Fi 实测 `/grab` 中位 40 ms、抖动到 80 ms ⇒ C++ 主循环掉到 4.7 FPS；
-> 直连千兆亚毫秒。配线：`bash tools/dual_machine/setup_wired_link.sh`
-> （x86 `enp87s0` 10.10.10.1/24 ↔ jetson `enP8p1s0` 10.10.10.2/24）。
+> 两者之间走**局域网**传 `/grab`（图像+姿态）与 `/command`。**已于 2026-10-15 接通网线直连**：
+> 实测 ping **1.13 ms（抖动 0.27）**、`/grab` **1.3~1.65 ms**，跨机闭环主循环 **19.8 FPS**（Large dt 0 次）。
+> 对比 Wi-Fi：`/grab` 中位 40 ms、抖动到 80 ms ⇒ 主循环只有 4.7 FPS（数字不可比）。
+> 配线流程（**必须先 prepare 再插线**，否则会把两台机器的 Wi-Fi 打掉，见脚本头部说明）：
+> ```bash
+> bash tools/dual_machine/setup_wired_link.sh prepare   # ① 先写静态配置（禁用自动 DHCP profile）
+> #   —— 这时才插线：x86 enp87s0 ↔ jetson enP8p1s0 ——
+> bash tools/dual_machine/setup_wired_link.sh status    # ② 查链路/地址（应见 10.10.10.1/24、10.10.10.2/24）
+> bash tools/dual_machine/setup_wired_link.sh verify    # ③ ping + /grab 延迟自检
+> ```
 
 > Mac（192.168.1.203）是控制端：ssh 别名写在 `~/.ssh/config`，密钥 `~/.ssh/id_ed25519_codex`。
 > 账号口令只存在仓库根的 `远程服务器.md`（已 gitignore，**永不入库**）。
@@ -103,8 +109,10 @@ ssh x86 'cd ~/vision && SIM_REMOTE=jetson SIM_BASE_URL=http://10.10.10.2:8099 \
 |---|---|---|
 | rm_sim 真实 tick 帧率（含渲染） | **10.3 FPS**（osmesa；关阴影 14） | **20.2 FPS**（EGL） |
 | 训练 env 步速（无渲染） | **58 步/s（1.9× 实时）** | 32 步/s（1.1× 实时） |
-| `sim_ort` 单帧推理 | 39 ms（intra=4）/ 34 ms（intra=12） | 未测（CPU 会更慢） |
+| `sim_ort` 单帧推理 | **19.4 ms**（跨机闭环实测，intra=12） | 未测（CPU 会更慢） |
+| 跨机 `/grab`（**有线**，已接通） | **1.3~1.65 ms，零抖动** | 同 |
 | 跨机 `/grab`（Wi-Fi） | 25~81 ms（中位 40 ms，抖动大） | 同 |
+| 跨机闭环主循环 | **19.8 FPS**（有线）｜4.7 FPS（Wi-Fi） | — |
 | CUDA 渲染 640×480 | 无 GPU | 21.3 ms/帧（47 FPS） |
 
 * **x86 单机跑不了 20 FPS 闭环**：软件渲染 8~10 FPS，而 `sim.main_fps: 20` 是评测口径（帧率不控住数字不成立）。

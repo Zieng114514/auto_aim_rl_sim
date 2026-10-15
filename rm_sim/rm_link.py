@@ -43,6 +43,8 @@ import rm_gimbal_demo as R  # noqa: E402
 from rm_appearance import PRESETS as APPEARANCE_PRESETS  # noqa: E402
 from rm_cars import CarField, duplicate_cars  # noqa: E402
 from rm_config import load as load_config_impl  # noqa: E402  配置层（configs/*.yaml）
+from rm_ballistics import BallisticsParams  # noqa: E402
+from rm_ballistics import from_config as ballistics_from_config  # noqa: E402
 from rm_lift import LiftParams  # noqa: E402
 from rm_gimbal_servo import apply_gm6020, report as servo_report  # noqa: E402
 from rm_gun import GunParams  # noqa: E402
@@ -189,6 +191,23 @@ def load_config(args):
   return load_config_impl(getattr(args, "config_dir", None), getattr(args, "ruleset", None))
 
 
+def ballistics_params_from_config(cfg, args) -> BallisticsParams | None:
+  """弹道气动参数：**以 `configs/ballistics.yaml` 为准**，可用 `--ballistics-drag` 覆盖开关。
+
+  默认（YAML 里 `drag.enabled: false`）返回的对象 `enabled=False` ⇒ 物理逐位不变。
+  打开阻力前先看 YAML 顶部那三条前置条件（同步解算器 / 重标 pitch_offset / 重录基线）。
+  """
+  p = ballistics_from_config(cfg)
+  if p is None:
+    return None
+  mode = getattr(args, "ballistics_drag", "config")
+  if mode == "on":
+    p.enabled = True
+  elif mode == "off":
+    p.enabled = False
+  return p
+
+
 def apply_cmd_args(demo, args) -> None:
   """把 CLI 参数灌进 demo.cmd（枪的标称弹速 / 靶车机动 / 运动基准脚本）。
 
@@ -256,7 +275,10 @@ def apply_cmd_args(demo, args) -> None:
 class LinkSim:
   def __init__(self, args) -> None:
     self.args = args
-    self.ruleset_name = load_config(args).ruleset_name   # 导出到 /state.json，便于溯源
+    # 配置层（configs/*.yaml）只读一次，枪 / 弹道 / 靶车都从这里取值 —— 训练与评测共用同一份
+    self.cfg = load_config(args)
+    self.ballistics = ballistics_params_from_config(self.cfg, args)
+    self.ruleset_name = self.cfg.ruleset_name         # 导出到 /state.json，便于溯源
     self.lock = threading.Lock()
     self.jpeg = None
     self.jpeg_ov = None
@@ -285,6 +307,7 @@ class LinkSim:
       real_assets=(args.assets_dir if args.model == "real" else None),
       xml_hook=_build_xml_hook(args, elev_deg),
       gun_params=gun_params_from_args(args),
+      ballistics_params=self.ballistics,
     )
     # 枪 / 靶车机动 / 运动基准脚本的配置统一走 apply_cmd_args（RL env 用同一份）
     apply_cmd_args(self.demo, args)
@@ -352,6 +375,9 @@ class LinkSim:
             f"{p.drift_yaw_deg}°/τ{p.drift_tau}s  IMU {p.imu_deg}°  相机 {p.cam_deg}°")
     else:
       print("  底盘扰动：关闭（--chassis-disturb on 可开）")
+    # 弹道：默认只有重力；打开气动阻力会在启动日志里显式打出来（便于溯源）
+    if self.ballistics is not None:
+      print("  " + self.ballistics.describe())
     print(f"  靶车机动：{args.car_motion}"
           + (f"（甩头 ω {args.gyro_spin_base}±{args.gyro_spin_amp} rad/s、"
              f"周期 {args.gyro_period_min}~{args.gyro_period_max}s、"
@@ -942,6 +968,12 @@ def build_parser() -> argparse.ArgumentParser:
   ap.add_argument("--gun-overheat-k", type=float, default=2.0,
                   help="超限扣血系数 /s：每秒扣 k×(超出热量) 点血")
   ap.add_argument("--gun-spread", type=float, default=0.15, help="枪口角散布 1σ（度）")
+  # 弹道气动（空气阻力）。**默认跟 YAML**（configs/ballistics.yaml 的 drag.enabled=false
+  # ⇒ 只有重力，与历史基线逐位一致）；这里给个 CLI 覆盖便于 A/B：
+  #   --ballistics-drag on  = 开阻力（注意：解算器还没同步，会系统性打低）
+  #   --ballistics-drag off = 强制关（即使 YAML 里开了）
+  ap.add_argument("--ballistics-drag", choices=("config", "on", "off"), default="config",
+                  help="覆盖 ballistics.yaml 的 drag.enabled：config=按 YAML（默认）/ on / off")
   ap.add_argument("--gun-speed-model", dest="gun_speed", action="store_true", default=True)
   ap.add_argument("--no-gun-speed", dest="gun_speed", action="store_false")
   ap.add_argument("--gun-heat-model", dest="gun_heat", action="store_true", default=True)
