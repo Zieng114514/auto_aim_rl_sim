@@ -76,6 +76,11 @@
    渲染本身是好的（47 FPS），别被吓到；`MUJOCO_GL=glfw` 反而不可用（无 X 授权）。
 10. **`sim_link.cpp` 跨机会拿到截断 body**（`JSON 解析失败 ... missing closing quote`）——
     它虽然循环 `recv` 到连接关闭，但没按 `Content-Length` 收全、也没有超时重试。
+11. **rsync 的远端路径不能用 `~`**：`rsync -a tools/ x86:~/vision/tools/` 在远端不会展开 `~`
+    ⇒ **静默不生效**（脚本报"同步完成"，机器上查不到文件；同一类问题还有 `--exclude 'rules/'`）。
+    一律写绝对路径 `x86:/home/clgx/vision/tools/`。已写进 `tools/dual_machine/README.md` §3。
+12. **macOS 没有 `timeout`**（`remote_train.sh` 在 Mac 上跑）：写了 `timeout 60 ssh ...` 会
+    `command not found` ⇒ 训练静默没起来。已改成探测 `timeout`/`gtimeout`。
 
 ## 4. 结论：原定架构被硬件卡住，需要负责人拍板
 

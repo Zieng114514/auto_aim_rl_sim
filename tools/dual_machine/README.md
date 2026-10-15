@@ -45,6 +45,8 @@ cmake -B build -DONNXRUNTIME_ROOT=$HOME/opt/onnxruntime-linux-x64-1.31.0
 3. **脚本里不要写死用户名/家目录**（`/home/zieng/...` 已全部改成相对脚本自身推算）。
    另：`rsync --exclude 'rules/'` 会**误伤** `rm_sim/configs/rules/`，会撞出
    `找不到配置文件 .../configs/rules/legacy_sim.yaml`。
+4. **rsync 的远端路径不要用 `~`**：`rsync -a x/ host:~/vision/x/` 在远端不会展开 `~`
+   ⇒ 静默不生效（本次"同步完成"却查不到文件）。写**绝对路径**：`host:/home/<user>/vision/x/`。
 
 ## 4. 常用命令
 
