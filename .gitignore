@@ -24,6 +24,13 @@
 # --- 官方规则手册 PDF（20MB，版权归大疆，从官网下载即可）---
 /rules/
 
+# --- rm_sim 运行时生成的缓存（每次启动按 MJCF 内容重建，不进仓库）---
+/rm_sim/assets/.merge.lock
+/rm_sim/assets/rm_demo_merged*.xml
+
+# --- 建模排查用的诊断截图（10MB；正式效果图在 preview/*.png，那个留着）---
+/rm_sim/preview/diag/
+
 # --- Python ---
 __pycache__/
 *.pyc
