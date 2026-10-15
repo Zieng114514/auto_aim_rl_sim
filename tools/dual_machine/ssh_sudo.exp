@@ -1,0 +1,36 @@
+#!/usr/bin/expect -f
+# =============================================================================
+#  带 sudo 的远端命令（ssh -tt + 自动回答 sudo 密码；密码读自 远程服务器.md，不回显）
+#  用法: expect -f /tmp/ssh_sudo.exp <ssh-host-alias-or-ip> <login-user> <remote-command>
+# =============================================================================
+set host [lindex $argv 0]
+set user [lindex $argv 1]
+set cmd  [lindex $argv 2]
+
+set pwfile "/Users/Apple/Desktop/vision/远程服务器.md"
+set fh [open $pwfile r]
+set data [read $fh]
+close $fh
+set cur ""
+array set PW {}
+foreach l [split $data "\n"] {
+  if {[regexp {^用户[:：]\s*(\S+)} $l -> u]} { set cur $u }
+  if {[regexp {^密码[:：]?\s*(\S+)} $l -> p]} { if {$cur ne ""} { set PW($cur) $p } }
+}
+if {![info exists PW($user)]} { puts "NO_PASSWORD_FOR_USER:$user"; exit 2 }
+set password $PW($user)
+
+set timeout 1800
+log_user 1
+set sent 0
+spawn ssh -tt -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 $host $cmd
+expect {
+  -re {(?i)(password for|\[sudo\]|密码)} {
+      if {!$sent} { after 300; send "$password\r"; set sent 1 }
+      exp_continue
+  }
+  -re "(?i)are you sure you want to continue" { send "y\r"; exp_continue }
+  eof
+}
+catch wait result
+exit [lindex $result 3]

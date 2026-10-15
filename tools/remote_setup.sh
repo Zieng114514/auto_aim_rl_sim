@@ -1,5 +1,14 @@
 #!/usr/bin/env bash
 # =============================================================================
+#  ⚠️ 历史脚本（2026-10-13 ~ 2026-10-15）：面向**旧的远程 T4 训练机**
+#  （root@183.239.162.232:30046，/root/gpufree-data）。该机器已不再使用。
+#
+#  现在的训练环境是**双机本地**（x86 小主机 / Jetson Orin NX），环境搭建脚本见：
+#      tools/dual_machine/x86_setup.sh      # x86：venv + mujoco/cv2/viser…
+#      tools/dual_machine/jetson_setup.sh   # Jetson：venv + torch(cu126)/mujoco…
+#  起训练用 tools/remote_train.sh（TRAIN_HOST=x86|jetson）。
+#  保留本文件只为记录当时的部署做法（uv 装 python、CPU 版 torch 的取舍）。
+# =============================================================================
 #  远程训练服务器（Tesla T4）环境部署 —— 在服务器上执行，不在本地跑
 #
 #  为什么训练要搬到远程：本地（12 线程 / 无独显余量）跑 PPO 时

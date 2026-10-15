@@ -16,7 +16,7 @@
 # =============================================================================
 set -euo pipefail
 
-WS="/home/zieng/Desktop/vision"
+WS="$(cd "$(dirname "$0")" && pwd)"   # 本脚本就在工作区根目录下
 OV_TGZ="$WS/.deps/openvino_2024.6.0.tgz"
 OV_EXTRACTED="l_openvino_toolkit_ubuntu22_2024.6.0.17404.4c0f47d2335_x86_64"
 OV_PREFIX="/opt/intel/openvino_2024.6.0"

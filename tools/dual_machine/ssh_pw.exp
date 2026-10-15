@@ -1,0 +1,40 @@
+#!/usr/bin/expect -f
+# =============================================================================
+#  非交互 SSH 密码登录助手（本机 Mac 用，密码从 远程服务器.md 读取，不回显）
+#  用法: expect -f /tmp/ssh_pw.exp <user> <host> [port] <remote-command>
+# =============================================================================
+set user   [lindex $argv 0]
+set host   [lindex $argv 1]
+set port   [lindex $argv 2]
+set cmd    [lindex $argv 3]
+
+set pwfile "/Users/Apple/Desktop/vision/远程服务器.md"
+set fh [open $pwfile r]
+set data [read $fh]
+close $fh
+
+# 解析「用户:X / 密码Y」成对映射（兼容 "用户:" 与全角 "用户："、"密码:" 与 "密码X"）
+set cur ""
+array set PW {}
+foreach l [split $data "\n"] {
+  if {[regexp {^用户[:：]\s*(\S+)} $l -> u]} { set cur $u }
+  if {[regexp {^密码[:：]?\s*(\S+)} $l -> p]} { if {$cur ne ""} { set PW($cur) $p } }
+}
+if {![info exists PW($user)]} {
+  puts "NO_PASSWORD_FOR_USER:$user"
+  exit 2
+}
+set password $PW($user)
+
+log_user 1
+set timeout 60
+spawn ssh -p $port -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 \
+  -o PreferredAuthentications=password -o PubkeyAuthentication=no \
+  -o NumberOfPasswordPrompts=1 "$user@$host" $cmd
+expect {
+  -re "(?i)password:" { send "$password\r"; exp_continue }
+  -re "(?i)yes/no"    { send "yes\r"; exp_continue }
+  eof
+}
+catch wait result
+exit [lindex $result 3]

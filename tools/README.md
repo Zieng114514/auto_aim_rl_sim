@@ -1,3 +1,7 @@
+> **2026-10-15 起：环境是双机的。** 本文里的 `run_debug.sh` 仍是"本机一键起 rm_sim + sp_vision"，
+> 但现行部署里 **rm_sim 跑在 Jetson、sp_vision 跑在 x86**；跨机联调/评测请看
+> [`dual_machine/README.md`](dual_machine/README.md)（`SIM_REMOTE` + `SIM_BASE_URL` + 网线直连）。
+
 # tools/ — 联调小工具
 
 ## run_debug.sh（一键联调）
@@ -35,6 +39,26 @@ bash tools/run_debug.sh --port 8100    # 换端口
 * **detection（OpenCV）**：sp_vision 原生的识别调试视图（`YOLOV8::draw_detections`），
   绿框是四点、绿字是 `置信度 类别 大小`。判断"识别漏没漏、框准不准"看这个。
 * **PlotJuggler**：云台跟踪曲线。判断"跟得上跟不上"看这个。
+
+---
+
+## 训练（PPO）——`remote_train.sh`
+
+**2026-10-15 起训练跑在 x86 小主机上**（旧远程 T4 已退役；不要放在 Mac 上跑，
+MuJoCo 不释放 GIL、8 worker 就能把机器压死——历史事故整机崩过两次）。
+
+```bash
+bash tools/remote_train.sh <run名> [步数] [并行环境数] [额外参数]   # 默认 x86
+TRAIN_HOST=jetson bash tools/remote_train.sh stage1_a 200000 8     # 切 Jetson
+SYNC=1 bash tools/remote_train.sh stage1_a 200000 16               # 先 rsync 代码过去
+EXTRA_ARGS="--c-fire 0.15" bash tools/remote_train.sh ...
+```
+
+* 默认并行环境数按机器给：x86 → 12（16 线程），Jetson → 6（8 核）。
+* 产物在 `<host>:~/vision/auto_aim_rl/runs/<run>/`：`train.log`、`log.jsonl`、`policy.pt`。
+* 实测吞吐：x86 **509 步/s @16 envs**（630 @32）、Jetson 154 步/s @8 envs（饱和）。
+  **训练会吃满 x86 的 16 线程 ⇒ 不要和"x86 跑 sp_vision 闭环"同时进行**（要同时就把 envs 压到 4~6）。
+* 细节与测法见 `agnet_logs/20261015_1342_train_on_new_machines.md`。
 
 ---
 

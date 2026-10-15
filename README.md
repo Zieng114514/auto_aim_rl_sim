@@ -24,7 +24,31 @@ vision/
 > 脚本里的路径是**相对工作区**的（例如 `rm_sim` 与 `sp_vision_25` 是兄弟目录），
 > 所以三者要放在同一个父目录下。
 
-## 快速开始
+## 现在的部署形态（2026-10-15 起：双机 + Mac 控制端）
+
+旧的单机 Ubuntu（12 线程 + 30HX）已退役。**现行**环境是两台机器，Mac 当控制端。
+机器清单、路径、铁律、运维命令的完整说明见
+**[`tools/dual_machine/README.md`](tools/dual_machine/README.md)**：
+
+| 机器 | 地址 | 跑什么 |
+|---|---|---|
+| **Jetson Orin NX**（`ssh jetson`） | 192.168.1.101 | **`rm_sim` 仿真机**：MuJoCo 物理 + GPU 渲染（EGL，20~24 FPS） |
+| **x86 小主机**（`ssh x86`） | 192.168.1.236 | **`sp_vision` 视觉闭环**（已编译、CPU 推理）+ 训练候选（env 58 步/s） |
+| Mac（本机） | 192.168.1.203 | 代码 / 文档 / 评测的**控制端**（`~/.ssh/config` 有 `x86`、`jetson` 别名） |
+
+为什么这样分：x86 的 Intel Arc 核显在内核 6.8 下没有驱动（`i915`/`xe` 都不加载、无 `/dev/dri`）
+⇒ 只能软件渲染，闭环 8~10 FPS，达不到 `sim.main_fps: 20` 的评测口径；而 Jetson 的 CPU 只有
+1.1× 实时，只够自己跑物理 + 渲染。两者之间传 `/grab` 与 `/command`，**建议网线直连**
+（Wi-Fi 实测 `/grab` 中位 40 ms、抖动到 80 ms ⇒ 主循环掉到 4.7 FPS；直连亚毫秒）。
+
+**跨机跑闭环**（仿真在 Jetson、视觉在 x86）：
+
+```bash
+ssh x86 'cd ~/vision && SIM_REMOTE=jetson SIM_BASE_URL=http://192.168.1.101:8099 \
+  bash sp_vision_25/sim/bench_ttk.sh 300 20251012'
+```
+
+## 快速开始（单机自检）
 
 ```bash
 git clone <本仓库>            rm-vision
@@ -33,8 +57,8 @@ git clone <auto_aim_rl>       auto_aim_rl
 mv rm-vision vision && cd vision
 
 # 1) 只跑仿真（不需要视觉框架）
-~/mjlab-env/venv/bin/python rm_sim/rm_link.py --model real --port 8099
-#    浏览器打开 http://127.0.0.1:8099 看全局视角 + 状态条
+~/mjlab-env/venv/bin/python rm_sim/rm_link.py --model real --port 8099 --host 0.0.0.0
+#    浏览器打开 http://127.0.0.1:8099 看全局视角 + 状态条（跨机时用 http://<本机IP>:8099）
 
 # 2) 一键联调（仿真 + sp_vision + PlotJuggler + 浏览器）
 bash tools/run_debug.sh

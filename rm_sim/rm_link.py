@@ -839,6 +839,11 @@ def build_parser() -> argparse.ArgumentParser:
   ap.add_argument("--model", choices=("simple", "real"), default="real")
   ap.add_argument("--assets-dir", default=os.path.join(_HERE, "assets"))
   ap.add_argument("--port", type=int, default=8099)
+  # HTTP 绑定地址：默认只监听本机（与历史行为一致）。
+  # 跨机联调（例如 sp_vision 跑在另一台机器、或从浏览器看流）写 --host 0.0.0.0，
+  # 这样 LAN 内可用 http://<本机IP>:<port>/ 访问；sp_vision 侧对应改 configs/sim.yaml 的 sim.base_url。
+  ap.add_argument("--host", default="127.0.0.1",
+                  help="HTTP 监听地址；127.0.0.1=仅本机（默认），0.0.0.0=开放给局域网")
   # 默认跟 rm_gimbal_demo 的离屏分辨率对齐（1280x960）：
   # 板子在 YOLO 的 640 输入里会大一倍，识别召回明显更好；
   # 同时 draw_detections 缩 0.5 后的 debug 窗口正好是 640x480，不再是 320x240。
@@ -979,12 +984,14 @@ def main() -> int:
   a = build_parser().parse_args()
 
   sim = LinkSim(a)
-  srv = ThreadingHTTPServer(("127.0.0.1", a.port), make_handler(sim))
+  srv = ThreadingHTTPServer((a.host, a.port), make_handler(sim))
   threading.Thread(target=srv.serve_forever, daemon=True).start()
-  print(f"  /grab        http://127.0.0.1:{a.port}/grab        (图像 + 同帧四元数)")
-  print(f"  /state.json  http://127.0.0.1:{a.port}/state.json  (状态 + 真值 + 命中)")
+  print(f"  /grab        http://{a.host}:{a.port}/grab        (图像 + 同帧四元数)")
+  print(f"  /state.json  http://{a.host}:{a.port}/state.json  (状态 + 真值 + 命中)")
   print(f"  POST /command 绝对角 {{control,shoot,yaw,pitch}}")
-  print(f"  /stream.mjpg http://127.0.0.1:{a.port}/stream.mjpg")
+  print(f"  /stream.mjpg http://{a.host}:{a.port}/stream.mjpg")
+  if a.host == "0.0.0.0":
+    print("  监听所有网卡：局域网内用 http://<本机IP>:%d/ 访问（sp_vision 侧改 sim.base_url）" % a.port)
 
   th = threading.Thread(target=sim.run, daemon=True)
   th.start()

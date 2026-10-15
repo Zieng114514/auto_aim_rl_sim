@@ -1,5 +1,11 @@
 # sp_vision_25 环境部署报告
 
+> **⚠️ 历史文档（2026-10-12）**：本文记录的是**旧的单机 Ubuntu 环境**（`/home/zieng`，12 线程 + 30HX），
+> 该机器已退役。**现行环境是双机部署**（Jetson Orin NX 跑 rm_sim、x86 小主机跑 sp_vision + 训练），
+> 见 [`tools/dual_machine/README.md`](tools/dual_machine/README.md) 与本文 [§8](#8-双机部署2026-10-15现行)。
+> 下面这些做法在新机器上**仍然适用**：OpenVINO 的 `/opt/intel/openvino_2024.6.0` 路径、
+> `deploy_deps.sh`、`build.sh`、以及"保持 `device: CPU`"的结论。
+
 > 部署日期：2026-10-12
 > 目标：让 `sp_vision_25`（同济 SuperPower 25 赛季自瞄框架）在本机可配置、可编译、可运行。
 
@@ -179,3 +185,58 @@ sudo apt-get install -y intel-opencl-icd=24.26.30049.10-950~22.04
 | `.deps/diag/ov_devices` | OpenVINO 设备探测小工具（源码同目录） |
 
 除此之外 `sp_vision_25/` 未做任何改动（`git status` 只多出未跟踪的 `build.sh` 与 `build/`）。
+
+---
+
+## 8. 双机部署（2026-10-15，现行）
+
+旧的单机环境换成**两台机器 + Mac 控制端**。完整清单、脚本与运维命令见
+[`tools/dual_machine/README.md`](tools/dual_machine/README.md)，本节只记要点与"和旧机器不一样的地方"。
+
+| | **x86 小主机**（视觉闭环 + 训练） | **Jetson Orin NX**（仿真机） |
+|---|---|---|
+| 地址 / 用户 | 192.168.1.236 / `clgx` | 192.168.1.101 / `nvidia` |
+| 硬件 | Core Ultra 9 285H（16 线程）/ 30 GiB / 916 GB NVMe | Orin NX（8 核 A78AE）/ 15 GiB / 233 GB NVMe + **Orin GPU** |
+| 系统 | Ubuntu 22.04.5，内核 6.8.0-40（**核显无驱动 ⇒ 无 `/dev/dri`**） | L4T R36.4.3（JetPack 6.2），aarch64 |
+| python venv | `~/mjlab-env/venv`：mujoco **3.11.0** / cv2 / viser+mjviser / onnxruntime /（CPU 版）torch | `~/mjlab-env/venv`：mujoco 3.11.0 / numpy **1.26.4** / **torch 2.8.0+cu126** / gymnasium / sklearn / onnxruntime |
+| 推理与编译 | **OpenVINO 2024.6.0**（`/opt/intel/openvino_2024.6.0`）+ **ONNX Runtime 1.31.0 CPU**（`~/opt/onnxruntime-linux-x64-1.31.0`）+ `sp_vision_25` **已编译** | CUDA toolkit 12.6 + cuDNN 9（apt 装）；C++ 未编译（跨 aarch64 需移植，本次不做） |
+| 实测 | 软件渲染 ⇒ 闭环 8~10 FPS（**故不在本机跑 rm_sim**）；`sim_ort` 单帧 **28.6 ms**（intra=12） | rm_sim **20~24 FPS**（EGL 渲染）；PPO 4 环境 ≈ **89 步/s** |
+
+### 8.1 两条必须遵守的差异
+
+1. **`mujoco` 钉 `3.11.0`**：装 3.16.0 会让黄金轨迹 qpos hash 从
+   `c76a72ab6149211b800259e871dad902` 变成 `7fa778ba…`（物理/基线全部失配）。
+   Jetson 侧还要 `numpy<2`（jetson-ai-lab 的 torch 轮子按 NumPy 1.x 编译）。
+2. **CMake 的 ONNX Runtime 路径**：CMakeLists 默认找 `$HOME/opt/onnxruntime-linux-x64-gpu_cuda12-1.31.0`；
+   x86 没有 NVIDIA GPU，装的是 **CPU 版**，因此要显式给一次（之后进 cache，`build.sh` 照旧）：
+
+```bash
+cd ~/vision/sp_vision_25
+cmake -B build -DONNXRUNTIME_ROOT=$HOME/opt/onnxruntime-linux-x64-1.31.0
+make -C build -j$(nproc)
+```
+
+### 8.2 渲染后端按机器设
+
+| 机器 | `MUJOCO_GL` | 说明 |
+|---|---|---|
+| x86 小主机 | `osmesa` | 无 `/dev/dri`（Arrow Lake-H 核显在内核 6.8 下无驱动），只能软件渲染 |
+| Jetson | `egl` | 退出时会抛 `EGL...free`（`Exception ignored in __del__`），**无害**，渲染是好的 |
+
+`sim/bench_ttk.sh` 会自动判断（无 `/dev/dri` 就给 `osmesa`），远端默认 `egl`。
+
+### 8.3 跨机闭环
+
+```bash
+# 在 x86 上（仿真由 Jetson 提供；需 x86 → jetson 的 ssh 免密）
+cd ~/vision && SIM_REMOTE=jetson SIM_BASE_URL=http://192.168.1.101:8099 \
+  bash sp_vision_25/sim/bench_ttk.sh 300 20251012
+```
+
+* 新增开关：`rm_link.py --host 0.0.0.0`、环境变量 `SIM_BASE_URL`（覆盖 `sim.base_url`）、
+  `bench_ttk.sh` 的 `SIM_REMOTE`（ssh 远起仿真）。
+* `sim_link.cpp` 改成**按 `Content-Length` 收全 + 失败重试一次**（跨机分片不再报
+  `missing closing quote`）。
+* **建议网线直连**（`tools/dual_machine/setup_wired_link.sh`）：Wi-Fi 下 `/grab` 中位 40 ms、
+  抖动到 80 ms，C++ 主循环只剩 4.7 FPS；直连千兆亚毫秒。
+

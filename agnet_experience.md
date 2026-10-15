@@ -351,6 +351,9 @@ TTK 与射速成反比 —— **热量的真实参数值直接决定仿真难度
 | 远程 T4 机 8 worker 总吞吐 | 优化前 132 步/s → **优化后 230 步/s** |
 | 远程机器 | 80 核 / 376G / T4 15G，但 **cgroup 限额 8 核**（`cpu.max` = 800000/100000） |
 | 训练 500k 步预计耗时 | ~36 min（远程） |
+| **新 x86 小主机 16 worker（2026-10-15）** | **509 步/s**（32 worker 630、12 worker 554）—— 是旧远程 T4 的 **2.7 倍** |
+| **新 Jetson Orin NX 8 worker（2026-10-15）** | 154 步/s（12/16 worker 也只有 ~150，8 核已饱和；GPU 对这个小 MLP 基本无感） |
+| 口径（2026-10-15 换机后） | `--steps 8192 --rollout 256 --episode-s 90 --randomize --seed 0`，步速取 `log.jsonl` 的 `steps/wall_s`（**含 PPO 更新**） |
 
 优化点（全部**逐位一致**，用 `scratch/golden_trace.py` 的 qpos hash 验证过）：
 1. `TerrainField.height()` 用纯 Python float + list（原来走 0-D numpy 标量）：0.28 s → 0.16 s；

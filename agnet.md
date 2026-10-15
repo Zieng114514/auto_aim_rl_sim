@@ -40,7 +40,7 @@ C++ 侧（部署通道 = 已建成的 sim_ort ORT 后端同款），最终上真
 | 仿真帧率 | ✅ sim_ort+CUDA 25.8 FPS（推理搬到 30HX 后 CPU 让给 MuJoCo） |
 | 经典闭环基线 | ✅ 已录档（含固定阈值的命中率/射频 trade-off 曲线） |
 | **学习型射手（阶段 E 部署面）** | ✅ `tasks/auto_aim/shooter_rl.{hpp,cpp}` + `shooter: threshold\|rl` 开关；21 维观测与 `auto_aim_rl/env/OBS_SPEC.md` 逐项对齐；ONNX Runtime，CPU 推理 0.07 ms/次 |
-| **训练基础设施** | ✅ 训练搬到远程 T4 机（`tools/remote_setup.sh` + `remote_train.sh`）——本地 12 线程跑 PPO 会把整机压崩（已复现两次）；远程 cgroup 限 8 核，实测 **230 步/s**（env 热路径优化 +74%） |
+| **训练基础设施（2026-10-15 换机）** | ✅ 训练跑在**双机**上：**x86 小主机（16 线程）实测 630 步/s @32 envs、509 @16 envs、554 @12 envs**；Jetson Orin NX 饱和 **154 步/s @8 envs** —— x86 是旧远程 T4（cgroup 限 8 核、230 步/s）的 **2.7 倍**，T4 退役。入口 `tools/remote_train.sh`（`TRAIN_HOST=x86\|jetson`、`SYNC=1` 同步代码）；**训练吃满 16 线程 ⇒ 与 x86 上跑闭环评测互斥** |
 | env 热路径 | ✅ 三处**逐位一致**的优化（地形插值 / contact 数组视图 / 命中映射缓存），单进程 32.6 → 51.6 步/s；`scratch/golden_trace.py` 做黄金轨迹回归 |
 | 复现性 | ✅ 随机源统一跟 `--seed` 绑定（原来枪的散布/弹速波动是 `default_rng(None)`，同种子跑两遍数字都不同） |
 | **🎯 学习型射手 已超过 sp_vision（正式验收通过）** | ✅ **4 种子（20251012/777/42/12345）× 300 s、限速 20 FPS、同一口径背靠背**：命中率 **46.5% vs 39.0%**、击杀 **10 vs 8**、每击杀弹量 **73 vs 93**、TTK **124.9 s vs 138.0 s** —— **四项全胜，判据"命中率不低且 TTK 不长"达标**。独立复验（换 3 个新种子）：41.5% vs 35.5%、TTK 100.7 vs 148.9 s。一条命令验收：`bash sp_vision_25/sim/acceptance.sh`；存档 `sim/baselines/{rl_accept,spv_accept}.json` |
@@ -266,6 +266,10 @@ auto_aim_rl/
 | 2026-10-14 | **升降要有占空比**：活动窗口 1~2 个完整升降（2~4 s）+ 静止窗口 2.5~5 s（随机），约 40% 时间在动，其余是普通静止靶（负责人：「不期望全部时间装甲板都在上下移动」） |
 | 2026-10-14 | **四种带升降靶型进基准**：固定升降 / 左右移动升降 / 原地旋转升降 / 随机旋转移动升降，预设 `benchmark_2026_lift`（10 s 一段、乱序）；legacy 四段仍是默认口径 |
 | 2026-10-14 | **修复基准脚本小陀螺泄漏**（属 bug 修复，需重录 script 模式基线）；黄金轨迹 hash 随之更新为 `c76a72ab…` |
+| 2026-10-15 | **开发机改为双机部署（负责人拍板）**：**Jetson Orin NX 跑 rm_sim**（GPU 渲染 20~24 FPS）、**x86 小主机（Ultra 9 285H）跑 sp_vision 与训练**；两者走局域网传 `/grab`+`/command`，**建议网线直连**。依据：x86 的 Arc 核显在内核 6.8 下无驱动 ⇒ 软件渲染仅 8~10 FPS（达不到 `sim.main_fps: 20` 口径）；Jetson CPU 只有 1.1× 实时，只够自己跑物理+渲染。旧 Ubuntu 机（12 线程 + 30HX）退役 |
+| 2026-10-15 | 新增跨机开关（默认行为不变）：`rm_link.py --host`（默认 127.0.0.1）、`SIM_BASE_URL` 环境变量覆盖 `sim.base_url`、`bench_ttk.sh` 的 `SIM_REMOTE`（用 ssh 远起仿真）；`sim_link.cpp` 改为按 `Content-Length` 收全 + 失败重试一次 |
+| 2026-10-15 | **`mujoco` 必须钉 `3.11.0`**：装 3.16.0 会让黄金轨迹 hash 从 `c76a72ab6149211b800259e871dad902` 变成 `7fa778ba…`；Jetson 侧 `numpy` 必须 `<2`（jetson-ai-lab 的 torch 轮子按 NumPy 1.x 编译） |
+| 2026-10-15 | **训练落点 = x86 小主机**（A 方案的一部分）：实测 x86 **630 步/s**（32 envs）/ 509（16）/ 554（12），Jetson 饱和 154 步/s（8 envs）⇒ x86 是旧远程 T4 的 2.7 倍，**T4 退役**；`remote_train.sh` 改为 `TRAIN_HOST=x86\|jetson`（默认 x86，`SYNC=1` 可从 Mac 同步代码），`remote_setup.sh` 标注为历史。**约束：训练会吃满 16 线程 ⇒ 不与 x86 上的闭环评测同时跑**（要同时就把 envs 压到 4~6） |
 
 ## 5. 开发规范（2026-10-13 拟定；新增/修改规则 = 改这里 + 写日志）
 
