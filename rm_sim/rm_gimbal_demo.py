@@ -821,7 +821,17 @@ class Demo:
     self.data.qpos[qa : qa + 3] = p
     self.data.qpos[qa + 3 : qa + 7] = (1.0, 0.0, 0.0, 0.0)
     self.data.qvel[da : da + 3] = dirv * (self.cmd.ball_speed if speed is None else speed)
+    # 自旋（摩擦轮夹着甩出去 ⇒ 出膛必然带 ω）：写进弹丸的**真实角速度**，
+    # 之后马格努斯力由 rm_ballistics 从 ω 读出来算（方向 = ω̂ × v̂）。
+    # 关闭自旋时写 0 = 历史行为，逐位不变。
     self.data.qvel[da + 3 : da + 6] = 0.0
+    if (self.ballistics is not None and self.ballistics.spin.enabled
+        and self.ballistics.spin.omega_rad_s != 0.0):
+      sp = self.ballistics.spin
+      # 炮口 site 的局部轴（列向量）：x = 炮管朝向、y = 侧向、z = 炮管的"上"
+      R_ms = self.data.site_xmat[self.muzzle_sid].reshape(3, 3)
+      axis = R_ms[:, 1] if sp.axis == "barrel_side" else R_ms[:, 2]
+      self.data.qvel[da + 3 : da + 6] = axis * sp.omega_rad_s
     mujoco.mj_forward(self.model, self.data)
     self.ball_t[i] = BALL_TTL
     self.shots += 1

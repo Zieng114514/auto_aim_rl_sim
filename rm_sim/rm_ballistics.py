@@ -17,7 +17,7 @@
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import numpy as np
 
@@ -26,14 +26,31 @@ G = 9.81          # 与 rm_gimbal_demo 的 <option gravity="0 0 -9.81"> 一致�
 
 
 @dataclass
+class SpinParams:
+  """自旋（马格努斯力）参数。`enabled=False` ⇒ 完全不参与物理（默认）。"""
+
+  enabled: bool = False
+  omega_rad_s: float = 500.0    # 出膛自旋角速度大小（rad/s）【待真机校准】
+  axis: str = "barrel_up"       # barrel_up（⇒ 横向力）| barrel_side（⇒ 竖直力）
+  cl_slope: float = 0.6         # C_L = min(cl_slope·S, cl_max)【待真机校准】
+  cl_max: float = 0.35
+  decay_tau_s: float = 0.0      # 自旋衰减时间常数（s）；0 = 不衰减
+
+  def cl(self, s: float) -> float:
+    """升力系数 C_L(S)：线性段 + 饱和（S = ω·r/|v|，无量纲）。"""
+    return min(self.cl_slope * s, self.cl_max)
+
+
+@dataclass
 class BallisticsParams:
-  """气动阻力参数。`enabled=False` ⇒ 完全不参与物理（默认）。"""
+  """气动参数：空气阻力 + 自旋（马格努斯）。两者各自可开关，默认**都关**。"""
 
   enabled: bool = False
   rho: float = 1.225        # 空气密度 kg/m^3
   cd: float = 0.47          # 阻力系数（无量纲）
   diameter_mm: float = 17.0  # 弹丸直径 mm（与 BALL_RADIUS 取齐）
   mass_g: float = 3.2        # 弹丸质量 g
+  spin: SpinParams = field(default_factory=SpinParams)
 
   @property
   def area_m2(self) -> float:
@@ -47,10 +64,17 @@ class BallisticsParams:
     return 0.5 * self.rho * self.cd * self.area_m2 / m
 
   def describe(self) -> str:
-    if not self.enabled:
-      return "弹道：只有重力（气动阻力关闭）"
-    return ("弹道：重力 + 空气阻力  k=%.5f 1/m（ρ=%.3f kg/m³, Cd=%.2f, d=%.1f mm, m=%.1f g）"
-            % (self.k, self.rho, self.cd, self.diameter_mm, self.mass_g))
+    parts = []
+    parts.append("重力")
+    if self.enabled:
+      parts.append("空气阻力 k=%.5f 1/m" % self.k)
+    if self.spin.enabled:
+      parts.append("自旋 ω=%.0f rad/s（%s）⇒ 马格努斯" % (self.spin.omega_rad_s, self.spin.axis))
+    if not self.enabled and not self.spin.enabled:
+      return "弹道：只有重力（气动与自旋都关闭）"
+    return ("弹道：" + " + ".join(parts)
+            + "（ρ=%.3f kg/m³, Cd=%.2f, d=%.1f mm, m=%.1f g）"
+            % (self.rho, self.cd, self.diameter_mm, self.mass_g))
 
   # ---------------------------------------------------------------- 施力
   def apply_drag(self, qvel_lin: np.ndarray, dt: float) -> bool:
@@ -67,21 +91,51 @@ class BallisticsParams:
     qvel_lin[:] = qvel_lin - (self.k * s * dt) * qvel_lin
     return True
 
-  def apply_to_balls(self, data, qadr, dadr, ball_t, dt: float) -> int:
-    """对弹丸池里**飞行中**（TTL>0）的每一发施加阻力。返回改动了几发。
+  def magnus_accel(self, v_vec: np.ndarray, omega_vec: np.ndarray) -> np.ndarray:
+    """马格努斯加速度（m/s²）：a = ½·ρ·A·C_L(S)/m · |v|² · (ω̂ × v̂)，S = ω·r/|v|。
 
-    注意：MuJoCo 的 Euler 是半隐式（先更新速度再更新位置），
-    所以"在 mj_step 之前改 qvel"= 这一步的加速度里含阻力，与参考积分器的
-    `scheme="euler"` 完全同序 ✓（自检里就是这么对齐的）。
+    方向 = 右手定则 `ω̂ × v̂`（自旋轴与速度平行时力为零，垂直时最大）。
+    自旋关闭 / ω=0 / v=0 时返回零向量。
     """
-    if not self.enabled:
+    sp = self.spin
+    v = float(np.linalg.norm(v_vec))
+    w = float(np.linalg.norm(omega_vec))
+    if (not sp.enabled) or v <= 1e-9 or w <= 1e-9:
+      return np.zeros(3)
+    r = self.diameter_mm * 1e-3 / 2.0
+    cl = sp.cl(w * r / v)
+    coeff = 0.5 * self.rho * self.area_m2 * cl * v * v / (self.mass_g * 1e-3)
+    return coeff * np.cross(omega_vec / w, v_vec / v)
+
+  def apply_to_balls(self, data, qadr, dadr, ball_t, dt: float) -> int:
+    """对弹丸池里**飞行中**（TTL>0）的每一发施加 ① 空气阻力 ② 马格努斯力（③ 可选自旋衰减）。
+    返回改动了几发。
+
+    两者都是"改 qvel"、都放在 `mj_step` 之前 —— 与参考积分器/自检同序。
+    自旋从弹丸的**真实角速度**读（`qvel[da+3:da+6]`），所以自旋衰减一旦打开，
+    力的方向与大小会自动跟着 ω 变（物理自洽，不是另开一条旁路）。
+    """
+    sp = self.spin
+    if (not self.enabled) and (not sp.enabled):
       return 0
     n = 0
     for i in range(len(ball_t)):
       if ball_t[i] <= 0.0:
         continue
       da = dadr[i]
-      if self.apply_drag(data.qvel[da : da + 3], dt):
+      v = data.qvel[da : da + 3]
+      w = data.qvel[da + 3 : da + 6]
+      touched = False
+      if self.enabled and self.apply_drag(v, dt):
+        touched = True
+      if sp.enabled:
+        a = self.magnus_accel(v, w)
+        if float(np.dot(a, a)) > 0.0:
+          v[:] = v + a * dt
+          touched = True
+        if sp.decay_tau_s > 0.0 and float(np.linalg.norm(w)) > 0.0:
+          w[:] = w * math.exp(-dt / sp.decay_tau_s)
+      if touched:
         n += 1
     return n
 
@@ -99,12 +153,22 @@ def from_config(cfg) -> BallisticsParams | None:
   d = raw.get("drag") or {}
   if "enabled" not in d:
     return None
+  sp = raw.get("spin") or {}
+  spin = SpinParams(
+    enabled=bool(sp.get("enabled", False)),
+    omega_rad_s=float(sp.get("omega_rad_s", 500.0)),
+    axis=str(sp.get("axis", "barrel_up")),
+    cl_slope=float(sp.get("cl_slope", 0.6)),
+    cl_max=float(sp.get("cl_max", 0.35)),
+    decay_tau_s=float(sp.get("spin_decay_tau_s", 0.0)),
+  )
   return BallisticsParams(
     enabled=bool(d.get("enabled", False)),
     rho=float(d.get("rho_kg_m3", 1.225)),
     cd=float(d.get("cd", 0.47)),
     diameter_mm=float(d.get("diameter_mm", 17.0)),
     mass_g=float(d.get("mass_g", 3.2)),
+    spin=spin,
   )
 
 

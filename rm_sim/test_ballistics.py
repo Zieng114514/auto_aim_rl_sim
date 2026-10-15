@@ -40,7 +40,7 @@ def check(name: str, ok: bool, detail: str = "") -> None:
     FAILED.append(name)
 
 
-def settle_and_aim(demo, steps: int = 250, pitch_deg: float = 8.0) -> None:
+def settle_and_aim(demo, steps: int = 600, pitch_deg: float = 8.0) -> None:
   """把云台推到 +y（**避开靶车**：简易模型里车在 +x 方向 1.6 m 处）、并**抬头 8°**，
   再推进若干步让伺服稳住。
 

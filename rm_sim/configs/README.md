@@ -11,7 +11,7 @@
 | `rules/rmuc_2026.yaml` | 2026 赛季真实规则（逐条标注手册出处页码）：热量双阈值/锁到归零、初速超限、伤害表、等级性能表、回血复活、弹药经济、基地前哨站 | 同上（切 `--ruleset rmuc_2026`） |
 | `projectiles.yaml` | 弹丸：几何/质量/公差/材质/数量/初速上限/检测阈值（17mm 与 42mm） | `rm_config.py` → 弹道与命中判定 |
 | `projectile_spread.yaml` | 散布：枪口角散布 + **由直径/质量公差引起的弹速与阻力散布**（后者默认关，待校准） | `rm_gun.py` |
-| `ballistics.yaml` | 弹道：**空气阻力**（默认关 ⇒ 只有重力）。含 ρ/Cd/直径/质量、打开前的三条前置条件，以及**自旋（马格努斯）**的字段位与标定入口（尚未实现） | `rm_ballistics.py` → `rm_gimbal_demo` 的弹丸施力 |
+| `ballistics.yaml` | 弹道：**空气阻力**与**自旋（马格努斯力）**——两者都**默认关**（⇒ 只有重力）。含 ρ/Cd/直径/质量、自旋轴与 C_L(S) 模型、打开前的三条前置条件，以及真机标定入口（shot_log 的 off_v/off_h） | `rm_ballistics.py` → `rm_gimbal_demo` 的弹丸施力 |
 | `armor.yaml` | 装甲模块尺寸：小 140×125（**仿真已在用**）、大 235×127（仅记录，未建模）、灯条几何（PnP 用）、暴击区 | `rm_config.py`、文档 |
 | `targets.yaml` | 靶车：兵种/血量/装甲 + **运动行为**（含轮腿升降），以及基准测试的"靶型预设" | `rm_car_script.py` / `rm_lift.py` |
 
