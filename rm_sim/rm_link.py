@@ -524,6 +524,10 @@ class LinkSim:
         "hits": self.demo.hits,
         # 发给视觉的**标称**弹速（真机语义：操作手设定值）
         "ball_speed": float(self.demo.cmd.ball_speed),
+        # 弹道的空气阻力系数 k（1/m）：**C++ 解算器就用这个值**，保证"解算器算的弹道"
+        # 与"仿真里飞的弹道"是同一个物理；关闭气动（默认）时为 0 ⇒ C++ 走闭式解。
+        "ball_k": (float(self.ballistics.k)
+                   if (self.ballistics is not None and self.ballistics.enabled) else 0.0),
         # 枪的真实状态：实际弹速 / 热量 / 锁枪 / 超限扣血 ——
         # 既是诊断信息，也是将来 RL 的观测来源
         "gun": None if self.demo.gun is None else self.demo.gun.status(),

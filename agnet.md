@@ -269,7 +269,8 @@ auto_aim_rl/
 | 2026-10-15 | **开发机改为双机部署（负责人拍板）**：**Jetson Orin NX 跑 rm_sim**（GPU 渲染 20~24 FPS）、**x86 小主机（Ultra 9 285H）跑 sp_vision 与训练**；两者走局域网传 `/grab`+`/command`，**建议网线直连**。依据：x86 的 Arc 核显在内核 6.8 下无驱动 ⇒ 软件渲染仅 8~10 FPS（达不到 `sim.main_fps: 20` 口径）；Jetson CPU 只有 1.1× 实时，只够自己跑物理+渲染。旧 Ubuntu 机（12 线程 + 30HX）退役 |
 | 2026-10-15 | 新增跨机开关（默认行为不变）：`rm_link.py --host`（默认 127.0.0.1）、`SIM_BASE_URL` 环境变量覆盖 `sim.base_url`、`bench_ttk.sh` 的 `SIM_REMOTE`（用 ssh 远起仿真）；`sim_link.cpp` 改为按 `Content-Length` 收全 + 失败重试一次 |
 | 2026-10-15 | **`mujoco` 必须钉 `3.11.0`**：装 3.16.0 会让黄金轨迹 hash 从 `c76a72ab6149211b800259e871dad902` 变成 `7fa778ba…`；Jetson 侧 `numpy` 必须 `<2`（jetson-ai-lab 的 torch 轮子按 NumPy 1.x 编译） |
-| 2026-10-15 | **弹道气动落成"可开关、默认关"**（负责人要求「弹丸飞行尽可能真实」）：新增 `configs/ballistics.yaml` + `rm_ballistics.py`，空气阻力 `a = −k·|v|·v`（k 由 ρ/Cd/直径/质量算）施加在 **`mj_step` 之前**的弹丸 qvel 上；`enabled=false` 为默认 ⇒ **黄金轨迹逐位不变**（`c76a72ab…` 已验证）。自检 `rm_sim/test_ballistics.py`：关闭时仿真==纯重力解析解、打开时仿真==参考积分器，**逐距离 0.00 mm**。**打开前必须先同步两个解算器**（C++ `tools/trajectory.cpp`、Python 镜像 `env/mirror.py`）+ 重标 `pitch_offset` + 重录基线，否则会把"更真实"变成"系统性脱靶"（8 m 处 ~6.5 cm = 整块装甲半高） |
+| 2026-10-15 | **弹道气动落成"可开关、默认关"**（负责人要求「弹丸飞行尽可能真实」）：新增 `configs/ballistics.yaml` + `rm_ballistics.py`，空气阻力 `a = −k·|v|·v`（k 由 ρ/Cd/直径/质量算）施加在 **`mj_step` 之前**的弹丸 qvel 上；`enabled=false` 为默认 ⇒ **黄金轨迹逐位不变**（`c76a72ab…` 已验证）。自检 `rm_sim/test_ballistics.py`：关闭时仿真==纯重力解析解、打开时仿真==参考积分器，**逐距离 0.00 mm**。打开它要做的三步见下一条 |
+| 2026-10-15 | **弹道解算器与仿真同源**（这是"打开气动阻力"的前提）：仿真把阻力系数放进 `/grab` 的 `ball_k`，`sim_main` 每帧写给 `tools::Trajectory::drag_k`（静态成员 ⇒ `aimer.cpp`/`planner.cpp` 的 4 处调用**零改动**）。`k=0`（默认）走**原闭式解、逐位不变**；`k>0` 走数值解（RK4+二分），与 `auto_aim_rl/env/mirror.py` **同一套算法与常数**（两侧对表逐行相同）。自检：`sp_vision_25/sim/test_trajectory_drag` + `auto_aim_rl/env/test_mirror_ballistics.py` |
 | 2026-10-15 | **训练落点 = x86 小主机**（A 方案的一部分）：实测 x86 **630 步/s**（32 envs）/ 509（16）/ 554（12），Jetson 饱和 154 步/s（8 envs）⇒ x86 是旧远程 T4 的 2.7 倍，**T4 退役**；`remote_train.sh` 改为 `TRAIN_HOST=x86\|jetson`（默认 x86，`SYNC=1` 可从 Mac 同步代码），`remote_setup.sh` 标注为历史。**约束：训练会吃满 16 线程 ⇒ 不与 x86 上的闭环评测同时跑**（要同时就把 envs 压到 4~6） |
 
 ## 5. 开发规范（2026-10-13 拟定；新增/修改规则 = 改这里 + 写日志）
@@ -337,7 +338,11 @@ auto_aim_rl/
       跟踪滞后补偿（当前 |ey| 中位 3.1°、p95 12°）、提前量模型（stage 2 监督学习）
 * [ ] **弹道真实度（2026-10-15 负责人要求「尽可能接近真实」）**——按影响量级排序：
   * [x] **空气阻力**：已实现（`ballistics.yaml` + `rm_ballistics.py`，默认关）+ 0.00 mm 自检。
-        **待落地**（打开它的三步）：同步 C++/镜像解算器 → 重标 `pitch_offset` → 重录基线
+        **已同步两个解算器**（仿真经 `/grab` 的 `ball_k` 喂给 `tools::Trajectory::drag_k`；
+        Python 镜像同一套算法，两侧对表逐行相同）。
+        **闭环 A/B 已验**：开阻力后逐发竖直偏差 off_v 均值 −1.36 → −0.95 cm（**补偿生效**），
+        但标准差 2.30 → 3.14 cm（飞行时间 +3~5% 放大提前量误差）。
+        **剩下的两步**：重标 `pitch_offset` → 300 s × 4 种子重录基线（届时才能判定命中率有没有真变化）
   * [ ] **自旋（马格努斯）**：真机 17mm 被摩擦轮夹着甩出，出膛必然带自旋 ⇒ 横向力
         `F = ½ρA·C_L(S)·v²`（S=ωr/v）。量级与阻力同级但是**横向**：ω=500 rad/s ⇒ 8 m 横漂 ~12 cm。
         标定入口现成：`shot_log` 的 `off_h` 随距离的增长（∝ d²），真机 3/5/8 m 各打 N 发即可反推
